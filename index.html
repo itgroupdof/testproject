@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>บันทึกรายรับ - รายจ่าย (เชื่อม Google Sheets)</title>
+    <style>
+        :root {
+            --income-color: #2ecc71;
+            --expense-color: #e74c3c;
+            --bg-color: #f7f9fc;
+            --card-bg: #ffffff;
+            --text-color: #2c3e50;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Sarabun', 'Tahoma', 'Sukhumvit Set', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+        }
+        .container {
+            width: 100%;
+            max-width: 450px;
+            background: var(--card-bg);
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+        h2 { text-align: center; margin-bottom: 20px; font-weight: 600; }
+        .balance-box { text-align: center; margin-bottom: 20px; }
+        .balance-box h4 { font-size: 0.9rem; color: #7f8c8d; }
+        .balance-box h1 { font-size: 2.2rem; margin-top: 5px; }
+        .summary-container {
+            display: flex;
+            justify-content: space-between;
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 25px;
+            border: 1px solid #eee;
+        }
+        .summary-box { flex: 1; text-align: center; }
+        .summary-box:first-child { border-right: 1px solid #ddd; }
+        .money { font-size: 1.2rem; font-weight: 600; margin-top: 5px; }
+        .plus { color: var(--income-color); }
+        .minus { color: var(--expense-color); }
+        h3 { border-bottom: 1px solid #eee; padding-bottom: 8px; margin-bottom: 15px; font-size: 1.1rem; }
+        .form-control { margin-bottom: 12px; }
+        label { display: block; margin-bottom: 5px; font-size: 0.9rem; }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 1rem;
+        }
+        .btn {
+            width: 100%;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 12px;
+            font-size: 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-top: 10px;
+            font-family: inherit;
+            font-weight: 600;
+        }
+        .btn:hover { background-color: #2980b9; }
+        .btn:disabled { background-color: #95a5a6; cursor: not-allowed; }
+        .list { list-style-type: none; margin-bottom: 25px; max-height: 250px; overflow-y: auto; }
+        .list li {
+            background-color: #fff;
+            border: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+        }
+        .list li.income { border-right: 5px solid var(--income-color); }
+        .list li.expense { border-right: 5px solid var(--expense-color); }
+        .delete-btn {
+            background-color: #e74c3c;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>บันทึกรายรับ - รายจ่าย</h2>
+
+    <div class="balance-box">
+        <h4>ยอดเงินคงเหลือ</h4>
+        <h1 id="balance">฿0.00</h1>
+    </div>
+
+    <div class="summary-container">
+        <div class="summary-box">
+            <h4>รายรับ</h4>
+            <p id="money-plus" class="money plus">+฿0.00</p>
+        </div>
+        <div class="summary-box">
+            <h4>รายจ่าย</h4>
+            <p id="money-minus" class="money minus">-฿0.00</p>
+        </div>
+    </div>
+
+    <h3>เพิ่มรายการใหม่</h3>
+    <form id="form">
+        <div class="form-control">
+            <label for="type">ประเภท</label>
+            <select id="type">
+                <option value="income">รายรับ (+)</option>
+                <option value="expense" selected>รายจ่าย (-)</option>
+            </select>
+        </div>
+        <div class="form-control">
+            <label for="text">ชื่อรายการ</label>
+            <input type="text" id="text" placeholder="เช่น ค่าอาหาร, เงินเดือน..." required>
+        </div>
+        <div class="form-control">
+            <label for="amount">จำนวนเงิน (บาท)</label>
+            <input type="number" id="amount" placeholder="0.00" step="0.01" min="0.01" required>
+        </div>
+        <button class="btn" id="submit-btn">บันทึกรายการ</button>
+    </form>
+
+    <h3 style="margin-top: 25px;">ประวัติรายการ (ในเครื่อง)</h3>
+    <ul id="list" class="list"></ul>
+</div>
+
+<script>
+    // *** นำ URL จาก Google Apps Script มาวางแทนที่ข้อความด้านล่างนี้ ***
+    const SCRIPT_URL = 'ใส่_URL_ที่ได้จาก_APPS_SCRIPT_ที่นี่';
+
+    const balance = document.getElementById('balance');
+    const money_plus = document.getElementById('money-plus');
+    const money_minus = document.getElementById('money-minus');
+    const list = document.getElementById('list');
+    const form = document.getElementById('form');
+    const type = document.getElementById('type');
+    const text = document.getElementById('text');
+    const amount = document.getElementById('amount');
+    const submitBtn = document.getElementById('submit-btn');
+
+    let transactions = JSON.parse(localStorage.getItem('transactions')) || [];
+
+    async function addTransaction(e) {
+        e.preventDefault();
+        
+        const amtValue = parseFloat(amount.value);
+        const finalAmount = type.value === 'expense' ? -Math.abs(amtValue) : Math.abs(amtValue);
+
+        const transaction = {
+            id: Math.floor(Math.random() * 100000000),
+            type: type.value,
+            text: text.value,
+            amount: finalAmount
+        };
+
+        submitBtn.disabled = true;
+        submitBtn.innerText = 'กำลังบันทึกลง Google Sheets...';
+
+        try {
+            if (SCRIPT_URL !== 'ใส่_URL_ที่ได้จาก_APPS_SCRIPT_ที่นี่') {
+                await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(transaction)
+                });
+            }
+
+            transactions.push(transaction);
+            addTransactionDOM(transaction);
+            updateValues();
+            localStorage.setItem('transactions', JSON.stringify(transactions));
+
+            text.value = '';
+            amount.value = '';
+        } catch (error) {
+            alert('เกิดข้อผิดพลาดในการส่งข้อมูล: ' + error.message);
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.innerText = 'บันทึกรายการ';
+        }
+    }
+
+    function addTransactionDOM(transaction) {
+        const sign = transaction.amount < 0 ? '-' : '+';
+        const item = document.createElement('li');
+        item.classList.add(transaction.amount < 0 ? 'expense' : 'income');
+
+        item.innerHTML = `
+            <span>${transaction.text}</span>
+            <div>
+                <span>${sign}฿${Math.abs(transaction.amount).toLocaleString('th-TH', {minimumFractionDigits: 2})}</span>
+                <button class="delete-btn" onclick="removeTransaction(${transaction.id})">ลบ</button>
+            </div>
+        `;
+        list.prepend(item);
+    }
+
+    function updateValues() {
+        const amounts = transactions.map(t => t.amount);
+        const total = amounts.reduce((acc, item) => (acc += item), 0);
+        const income = amounts.filter(item => item > 0).reduce((acc, item) => (acc += item), 0);
+        const expense = (amounts.filter(item => item < 0).reduce((acc, item) => (acc += item), 0) * -1);
+
+        balance.innerText = `฿${total.toLocaleString('th-TH', {minimumFractionDigits: 2})}`;
+        money_plus.innerText = `+฿${income.toLocaleString('th-TH', {minimumFractionDigits: 2})}`;
+        money_minus.innerText = `-฿${expense.toLocaleString('th-TH', {minimumFractionDigits: 2})}`;
+    }
+
+    function removeTransaction(id) {
+        transactions = transactions.filter(t => t.id !== id);
+        localStorage.setItem('transactions', JSON.stringify(transactions));
+        init();
+    }
+
+    function init() {
+        list.innerHTML = '';
+        transactions.forEach(addTransactionDOM);
+        updateValues();
+    }
+
+    init();
+    form.addEventListener('submit', addTransaction);
+</script>
+
+</body>
+</html>
